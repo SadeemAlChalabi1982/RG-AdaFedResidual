@@ -1,0 +1,859 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RG-AdaFedResidual — Federated Dosing Network</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='15' fill='%230a3f3c'/%3E%3Ccircle cx='21' cy='21' r='7' fill='%234bd2a1'/%3E%3Ccircle cx='43' cy='21' r='7' fill='%234bd2a1'/%3E%3Ccircle cx='21' cy='43' r='7' fill='%234bd2a1'/%3E%3Ccircle cx='43' cy='43' r='7' fill='%234bd2a1'/%3E%3C/svg%3E">
+<style>
+  :root{
+    --ink:#0d2b28;
+    --ink-soft:#3c5c58;
+    --paper:#f3f6f5;
+    --panel:#ffffff;
+    --line:#d7e2e0;
+    --teal:#12615c;
+    --teal-deep:#0a3f3c;
+    --cloud:#2b5f8a;
+    --amber:#c97a2e;
+    --good:#2f8f5b;
+    --mono: "IBM Plex Mono", "SF Mono", Menlo, monospace;
+    --sans: "Inter", "Segoe UI", system-ui, sans-serif;
+  }
+  @media (prefers-reduced-motion: reduce){
+    *{animation-duration:0.01ms !important; transition-duration:0.01ms !important;}
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:var(--paper);color:var(--ink);font-family:var(--sans);}
+  body{padding:28px 20px 60px;}
+
+  .wrap{max-width:1180px;margin:0 auto;}
+
+  header.top{
+    display:flex;justify-content:space-between;align-items:flex-end;
+    border-bottom:2px solid var(--ink);padding-bottom:16px;margin-bottom:22px;
+    flex-wrap:wrap;gap:14px;
+  }
+  header.top h1{
+    font-size:clamp(24px,3.4vw,34px);
+    margin:0 0 4px;letter-spacing:-0.01em;font-weight:700;
+  }
+  header.top p{margin:0;color:var(--ink-soft);font-size:14.5px;max-width:560px;}
+  .badge{
+    font-family:var(--mono);font-size:12px;color:var(--teal-deep);
+    background:#e4efec;border:1px solid #bcd6cf;border-radius:5px;
+    padding:6px 10px;white-space:nowrap;
+  }
+
+  .controls{
+    display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+    background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    padding:14px 18px;margin-bottom:26px;
+  }
+  button.run{
+    background:var(--teal-deep);color:#fff;border:none;border-radius:8px;
+    padding:11px 20px;font-size:14.5px;font-weight:600;cursor:pointer;
+    font-family:var(--sans);transition:background .15s ease;
+  }
+  button.run:hover{background:var(--teal);}
+  button.run:disabled{background:#9fb3b0;cursor:default;}
+  button.download-log{
+    background:#fff;color:var(--teal-deep);border:1px solid #8eb9b0;
+  }
+  button.download-log:hover{background:#e8f3f0;color:var(--teal-deep);}
+  .horizon-control{
+    display:flex;align-items:center;gap:8px;padding:7px 10px;
+    background:#eef5f3;border:1px solid #cbded9;border-radius:8px;
+    color:var(--ink-soft);font-size:12px;font-weight:600;
+  }
+  .horizon-control select{
+    min-width:158px;background:#fff;color:var(--ink);border:1px solid #b9d2cc;
+    border-radius:6px;padding:6px 28px 6px 9px;font:600 12.5px var(--sans);
+    cursor:pointer;
+  }
+  .horizon-control select:focus{outline:2px solid rgba(15,118,110,.25);outline-offset:1px;}
+  .replay-info{font-family:var(--mono);font-size:13px;color:var(--ink-soft);}
+  .replay-info b{color:var(--ink);}
+  .note{font-size:12.5px;color:var(--ink-soft);margin-left:auto;max-width:320px;line-height:1.4;}
+
+  /* pipeline diagram */
+  .pipeline{
+    position:relative;
+    background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    padding:30px 20px 24px;margin-bottom:30px;overflow:hidden;
+  }
+  .pipeline h2{margin:0 0 20px;font-size:15px;text-transform:none;color:var(--ink-soft);font-weight:600;}
+  svg.links{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;}
+  .path-line{
+    fill:none;stroke:var(--teal);stroke-width:1.6;stroke-dasharray:5 5;opacity:.55;
+  }
+  .pulse{
+    fill:var(--amber);r:0;
+    animation:none;
+  }
+  .pulse.active{
+    animation:travel var(--dur,1.4s) ease-in-out;
+  }
+  @keyframes travel{
+    0%{opacity:0;}
+    5%{opacity:1;r:4;}
+    92%{opacity:1;r:4;}
+    100%{opacity:0;r:4;}
+  }
+  .flow .f.hit{
+    animation:hitflash .55s ease;
+  }
+  @keyframes hitflash{
+    0%{background:#fff; box-shadow:inset 0 0 0 2px var(--teal);}
+    100%{}
+  }
+  .flow .f.local.hit{ background:#dff0ec; box-shadow:inset 0 0 0 2px var(--teal); }
+  .flow .f.resid.hit{ background:#fbe6cf; box-shadow:inset 0 0 0 2px var(--amber); }
+  .flow .f.corr.hit{ background:#d9f0e0; box-shadow:inset 0 0 0 2px var(--good); }
+
+  .stage-row{
+    display:grid;grid-template-columns:repeat(4,1fr);gap:10px;
+    position:relative;z-index:1;
+  }
+  .stage{
+    text-align:center;font-size:12.5px;color:var(--ink-soft);
+  }
+  .stage .box{
+    border:1.5px solid var(--line);border-radius:9px;background:#fbfcfc;
+    padding:12px 8px;font-family:var(--mono);font-size:12px;color:var(--ink);
+    min-height:46px;display:flex;align-items:center;justify-content:center;
+  }
+  .stage .box.cloud{
+    background:linear-gradient(135deg,#eaf1f7,#dde9f2);
+    border-color:#b7cee1;color:var(--cloud);font-weight:600;
+  }
+  .stage-label{margin-bottom:6px;font-weight:600;color:var(--ink);}
+
+  /* federated node diagram: 4 stations feeding one aggregation cloud */
+  .cloud-node{
+    position:relative;z-index:1;
+    width:min(280px,70%);margin:0 auto 46px;text-align:center;
+    background:linear-gradient(135deg,#eaf1f7,#dde9f2);
+    border:1.5px solid #b7cee1;border-radius:14px;padding:14px 12px;
+  }
+  .cloud-title{color:var(--cloud);font-weight:700;font-size:14px;}
+  .cloud-sub{color:var(--ink-soft);font-size:11.5px;font-family:var(--mono);margin-top:2px;}
+  .node-row{
+    display:grid;grid-template-columns:repeat(4,1fr);gap:14px;
+    position:relative;z-index:1;
+  }
+  .node{text-align:center;}
+  .node-label{font-size:12.5px;font-weight:600;color:var(--ink);margin-bottom:6px;}
+  .node-box{
+    border:1.5px solid var(--line);border-radius:9px;background:#fbfcfc;
+    padding:10px 6px;font-family:var(--mono);font-size:11px;color:var(--ink-soft);
+  }
+  .node.pinged .node-box{border-color:var(--teal);color:var(--teal-deep);}
+  .phase-tag{
+    margin-top:8px;font-family:var(--mono);font-size:11px;
+    color:var(--ink-soft);letter-spacing:.02em;
+  }
+  .phase-tag.up{color:var(--teal-deep);}
+  .phase-tag.down{color:var(--amber);}
+
+  /* station grid */
+  .stations{
+    display:grid;grid-template-columns:1fr 1fr;gap:18px;
+  }
+  @media (max-width:760px){ .stations{grid-template-columns:1fr;} .stage-row{grid-template-columns:1fr 1fr;} .node-row{grid-template-columns:1fr 1fr;} }
+
+  .station{
+    background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    overflow:hidden;transition:box-shadow .2s ease;
+  }
+  .station.updating{box-shadow:0 0 0 2px var(--amber);}
+  .station .head{
+    display:flex;justify-content:space-between;align-items:baseline;
+    padding:16px 18px 4px;
+  }
+  .station .head h3{margin:0;font-size:17px;font-weight:700;}
+  .station .head .capacity{font-size:12px;color:var(--ink-soft);font-family:var(--mono);}
+  .tag{
+    font-family:var(--mono);font-size:10.5px;color:var(--good);
+    border:1px solid #bfe0cc;background:#eaf7ee;border-radius:5px;
+    padding:2px 7px;height:fit-content;
+  }
+
+  .metrics{
+    display:grid;grid-template-columns:repeat(3,1fr);gap:1px;
+    background:var(--line);margin:14px 0 0;
+  }
+  .metric{background:var(--panel);padding:9px 10px;}
+  .metric .k{font-size:10.5px;color:var(--ink-soft);margin-bottom:2px;}
+  .metric .v{font-family:var(--mono);font-size:14px;font-weight:600;}
+
+  .flow{
+    display:flex;align-items:stretch;gap:0;margin:14px 18px 0;
+    border:1px solid var(--line);border-radius:8px;overflow:hidden;
+  }
+  .flow .f{flex:1;padding:9px 10px;font-size:11.5px;text-align:center;border-right:1px solid var(--line);}
+  .flow .f:last-child{border-right:none;}
+  .flow .f .k{color:var(--ink-soft);margin-bottom:2px;}
+  .flow .f .v{font-family:var(--mono);font-weight:600;font-size:12px;}
+  .flow .f.local{background:#f6f9f8;}
+  .flow .f.resid{background:#fbf3ea;}
+  .flow .f.corr{background:#eef6f0;}
+
+  .forecast{
+    display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);
+    margin:14px 18px 18px;border-radius:8px;overflow:hidden;
+  }
+  .fc{background:#eef7f2;padding:12px 14px;}
+  .fc .k{font-size:11.5px;color:var(--ink-soft);margin-bottom:3px;}
+  .fc .v{font-family:var(--mono);font-size:22px;font-weight:700;color:var(--teal-deep);}
+  .fc .v span{font-size:12px;font-weight:400;color:var(--ink-soft);}
+  .fc .err{font-size:10.5px;color:var(--amber);font-family:var(--mono);margin-top:2px;}
+  .fc .v.tick{animation:blink .5s ease;}
+  @keyframes blink{ 0%{opacity:.3;} 100%{opacity:1;} }
+
+  .legend{
+    margin-top:22px;font-size:12px;color:var(--ink-soft);
+    display:flex;gap:22px;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:14px;
+  }
+  .legend b{color:var(--ink);}
+
+  .summary-panel{
+    margin-top:26px;background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    padding:18px 20px 20px;
+  }
+  .summary-panel h2{margin:0 0 2px;font-size:15px;font-weight:700;color:var(--ink);}
+  .summary-sub{margin:0 0 14px;font-size:12px;color:var(--ink-soft);}
+  .summary-grid{
+    display:grid;grid-template-columns:repeat(5,1fr);gap:1px;background:var(--line);
+    border-radius:9px;overflow:hidden;border:1px solid var(--line);
+  }
+  @media (max-width:760px){ .summary-grid{grid-template-columns:1fr 1fr;} }
+  .sum-card{background:var(--panel);padding:12px 14px;}
+  .sum-card .k{font-size:11px;color:var(--ink-soft);margin-bottom:4px;}
+  .sum-card .v{font-family:var(--mono);font-size:19px;font-weight:700;color:var(--teal-deep);}
+  .sum-card .v span{font-size:11px;font-weight:400;color:var(--ink-soft);}
+  .sum-card.good .v{color:var(--good);}
+  .need-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:7px;}
+  .need{min-width:0;}
+  .need + .need{border-left:1px solid var(--line);padding-left:10px;}
+  .need .label{display:block;font-size:10px;color:var(--ink-soft);margin-bottom:2px;}
+  .need .value{font-family:var(--mono);font-size:16px;font-weight:700;color:var(--teal-deep);}
+  .need .unit{font-size:9.5px;color:var(--ink-soft);margin-left:2px;}
+  .station-breakdown{
+    margin-top:14px;border:1px solid var(--line);border-radius:9px;background:#fbfdfc;
+  }
+  .station-breakdown summary{
+    cursor:pointer;padding:12px 14px;font-size:13px;font-weight:700;color:var(--teal-deep);
+    list-style:none;display:flex;align-items:center;justify-content:space-between;
+  }
+  .station-breakdown summary::-webkit-details-marker{display:none;}
+  .station-breakdown summary::after{content:'＋';font-family:var(--mono);font-size:16px;}
+  .station-breakdown[open] summary::after{content:'−';}
+  .breakdown-content{border-top:1px solid var(--line);padding:14px;}
+  .breakdown-note{font-size:11.5px;color:var(--ink-soft);margin-bottom:12px;}
+  .chemical-table + .chemical-table{margin-top:16px;}
+  .chemical-table h3{margin:0 0 7px;font-size:13px;color:var(--ink);}
+  .table-scroll{overflow-x:auto;border:1px solid var(--line);border-radius:8px;background:#fff;}
+  .breakdown-table{width:100%;min-width:790px;border-collapse:collapse;font-size:11.5px;}
+  .breakdown-table th{
+    padding:8px 9px;background:#eef5f3;color:var(--ink-soft);font-weight:600;text-align:left;
+    border-bottom:1px solid var(--line);white-space:nowrap;
+  }
+  .breakdown-table td{padding:8px 9px;border-bottom:1px solid var(--line);white-space:nowrap;}
+  .breakdown-table tbody tr:last-child td{border-bottom:none;}
+  .breakdown-table td.num{font-family:var(--mono);text-align:right;}
+  .status-pill{display:inline-block;padding:3px 7px;border-radius:999px;font-size:10px;font-weight:700;}
+  .status-pill.within{background:#e6f6ef;color:#087a57;}
+  .status-pill.outside{background:#fff0e2;color:#a45700;}
+  footer{text-align:center;font-size:11.5px;color:var(--ink-soft);margin-top:34px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div>
+      <h1>RG-AdaFedResidual — Federated Dosing Network</h1>
+      <p>Conceptual illustration of the proposed framework: stations train locally on their own historical records, share only model updates with a central aggregator, and receive relation-guided residual corrections for dosing forecasts across three temporal horizons.</p>
+    </div>
+    <div class="badge">SIMULATED FORECAST ENGINE — DATASET REPLAY MODE</div>
+  </header>
+
+  <div class="controls">
+    <button class="run" id="runBtn">Start</button>
+    <button class="run" id="speedBtn" style="background:#5c7975;">Speed: 1×</button>
+    <button class="run download-log" id="downloadLogBtn" type="button">Download LOG</button>
+    <label class="horizon-control" for="horizonSelect">
+      <span>Forecast horizon</span>
+      <select id="horizonSelect">
+        <option value="1">H+1 — 1 day ahead</option>
+        <option value="2">H+2 — 2 days ahead</option>
+        <option value="3">H+3 — 3 days ahead</option>
+      </select>
+    </label>
+    <div class="replay-info">Locked-test day <b id="sampleNum">1</b> / <b id="sampleTotal">–</b></div>
+    <div class="note">Each tick advances one day from the complete locked-test prediction period for all four stations.</div>
+  </div>
+
+  <div class="pipeline">
+    <svg class="links" id="links"></svg>
+    <div class="cloud-node" id="cloudNode">
+      <div class="cloud-title">Global Aggregation</div>
+      <div class="cloud-sub">relation-guided weighting</div>
+      <div class="phase-tag" id="phaseTag">idle</div>
+    </div>
+    <div class="node-row" id="nodeRow">
+      <div class="node" data-i="0"><div class="node-label">Kadhimiya</div><div class="node-box">sensor → local model</div></div>
+      <div class="node" data-i="1"><div class="node-label">Karama</div><div class="node-box">sensor → local model</div></div>
+      <div class="node" data-i="2"><div class="node-label">Resafa</div><div class="node-box">sensor → local model</div></div>
+      <div class="node" data-i="3"><div class="node-label">Tarmyya</div><div class="node-box">sensor → local model</div></div>
+    </div>
+  </div>
+
+  <div class="stations" id="stations"></div>
+
+  <div class="summary-panel">
+    <h2>Current-day forecast evaluation</h2>
+    <p class="summary-sub" id="summarySub">Selected horizon evaluated across the four stations</p>
+    <div class="summary-grid">
+      <div class="sum-card"><div class="k">Station forecasts evaluated</div><div class="v" id="sumCount">4</div></div>
+      <div class="sum-card">
+        <div class="k">Alum daily requirement · selected horizon</div>
+        <div class="need-row">
+          <div class="need"><span class="label">Forecast</span><span class="value" id="sumAlumForecast">–</span><span class="unit">t/day</span></div>
+          <div class="need"><span class="label">Actual</span><span class="value" id="sumAlumActual">–</span><span class="unit">t/day</span></div>
+        </div>
+      </div>
+      <div class="sum-card">
+        <div class="k">Chlorine daily requirement · selected horizon</div>
+        <div class="need-row">
+          <div class="need"><span class="label">Forecast</span><span class="value" id="sumClForecast">–</span><span class="unit">t/day</span></div>
+          <div class="need"><span class="label">Actual</span><span class="value" id="sumClActual">–</span><span class="unit">t/day</span></div>
+        </div>
+      </div>
+      <div class="sum-card"><div class="k">Alum within ±10% · selected horizon</div><div class="v" id="sumAlumHit">–</div></div>
+      <div class="sum-card"><div class="k">Chlorine within ±10% · selected horizon</div><div class="v" id="sumClHit">–</div></div>
+    </div>
+    <details class="station-breakdown">
+      <summary>Station-level details</summary>
+      <div class="breakdown-content">
+        <div class="breakdown-note" id="breakdownNote">Current dataset day and selected forecast horizon</div>
+        <section class="chemical-table" aria-labelledby="alumTableTitle">
+          <h3 id="alumTableTitle">Alum requirements by station</h3>
+          <div class="table-scroll">
+            <table class="breakdown-table">
+              <thead><tr><th>Station</th><th>Flow basis (MLD)</th><th>Forecast dose (mg/L)</th><th>Actual dose (mg/L)</th><th>Forecast (t/day)</th><th>Actual (t/day)</th><th>Absolute error</th><th>Status</th></tr></thead>
+              <tbody id="alumBreakdownBody"></tbody>
+            </table>
+          </div>
+        </section>
+        <section class="chemical-table" aria-labelledby="chlorineTableTitle">
+          <h3 id="chlorineTableTitle">Chlorine requirements by station</h3>
+          <div class="table-scroll">
+            <table class="breakdown-table">
+              <thead><tr><th>Station</th><th>Flow basis (MLD)</th><th>Forecast dose (mg/L)</th><th>Actual dose (mg/L)</th><th>Forecast (t/day)</th><th>Actual (t/day)</th><th>Absolute error</th><th>Status</th></tr></thead>
+              <tbody id="chlorineBreakdownBody"></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </details>
+  </div>
+
+  <div class="legend">
+    <div><b>Local data</b> — raw operational records never leave the station.</div>
+    <div><b>Upload (teal)</b> — each station sends only its model update, weighted by relation-guided importance.</div>
+    <div><b>Broadcast (amber)</b> — the aggregated model is sent back for local residual correction.</div>
+  </div>
+
+  <footer>Conceptual demo built from the RG-AdaFedResidual methodology · figures are illustrative, generated from dataset replay.</footer>
+</div>
+
+<script src="horizon-data.js"></script>
+<script>
+const stations = [
+  {name:"Kadhimiya Station", capacity:"112.5 MLD", records:"1,224 local daily records",
+   turbRaw:45.00, turbFinal:1.60, ph:7.87, temp:24.0, tds:648, resCl:3.00,
+   corr:"Hybrid", alum:9.37, alumErr:0.37, cl:2.47, clErr:0.07},
+  {name:"Karama Station", capacity:"212 MLD", records:"1,130 local daily records",
+   turbRaw:24.00, turbFinal:3.30, ph:8.10, temp:25.0, tds:451, resCl:1.78,
+   corr:"Local", alum:8.10, alumErr:0.21, cl:1.92, clErr:0.05},
+  {name:"Resafa Station", capacity:"910 MLD", records:"1,250 local daily records",
+   turbRaw:55.00, turbFinal:1.80, ph:8.00, temp:27.0, tds:519, resCl:0.95,
+   corr:"Hybrid", alum:9.37, alumErr:0.37, cl:2.47, clErr:0.07},
+  {name:"Tarmyya Station", capacity:"1,365 MLD", records:"1,206 local daily records",
+   turbRaw:35.00, turbFinal:0.35, ph:8.20, temp:26.0, tds:460, resCl:0.50,
+   corr:"Federated", alum:9.02, alumErr:2.52, cl:2.48, clErr:0.08},
+];
+
+const stationsEl = document.getElementById('stations');
+
+function render(){
+  stationsEl.innerHTML = stations.map((s,i) => `
+    <div class="station" id="station-${i}">
+      <div class="head">
+        <div>
+          <h3>${s.name}</h3>
+          <div class="capacity">${s.capacity} · ${s.records}</div>
+        </div>
+        <div class="tag">LOCAL DATA</div>
+      </div>
+      <div class="metrics">
+        <div class="metric"><div class="k">Raw turbidity</div><div class="v">${s.turbRaw.toFixed(2)} NTU</div></div>
+        <div class="metric"><div class="k">Final turbidity</div><div class="v">${s.turbFinal.toFixed(2)} NTU</div></div>
+        <div class="metric"><div class="k">Raw pH</div><div class="v">${s.ph.toFixed(2)}</div></div>
+        <div class="metric"><div class="k">Temperature</div><div class="v">${s.temp.toFixed(1)} °C</div></div>
+        <div class="metric"><div class="k">TDS</div><div class="v">${s.tds} mg/L</div></div>
+        <div class="metric"><div class="k">Residual Cl₂</div><div class="v">${s.resCl.toFixed(2)} mg/L</div></div>
+      </div>
+      <div class="flow" id="flow-${i}">
+        <div class="f local" id="flow-local-${i}"><div class="k">Local base</div><div class="v">station model</div></div>
+        <div class="f resid" id="flow-resid-${i}"><div class="k">Residual</div><div class="v">${s.corr}</div></div>
+        <div class="f corr" id="flow-corr-${i}"><div class="k">Corrected dose</div><div class="v" id="forecast-horizon-${i}">H+1 · 1 day ahead</div></div>
+      </div>
+      <div class="forecast">
+        <div class="fc"><div class="k">Alum forecast</div><div class="v" id="alum-${i}">${s.alum.toFixed(2)} <span>mg/L</span></div><div class="err" id="alumErr-${i}">+${s.alumErr.toFixed(2)} error</div></div>
+        <div class="fc"><div class="k">Chlorine forecast</div><div class="v" id="cl-${i}">${s.cl.toFixed(2)} <span>mg/L</span></div><div class="err" id="clErr-${i}">+${s.clErr.toFixed(2)} error</div></div>
+      </div>
+    </div>
+  `).join('');
+}
+render();
+
+// draw curved connectors from each station node up to the central cloud
+function drawLinks(){
+  const svg = document.getElementById('links');
+  const pipe = document.querySelector('.pipeline');
+  const pipeRect = pipe.getBoundingClientRect();
+  const cloud = document.getElementById('cloudNode').getBoundingClientRect();
+  svg.setAttribute('width', pipeRect.width);
+  svg.setAttribute('height', pipeRect.height);
+  svg.innerHTML = `
+    <defs>
+      <filter id="glow" x="-200%" y="-200%" width="500%" height="500%">
+        <feGaussianBlur stdDeviation="4.2" result="blur"/>
+        <feMerge>
+          <feMergeNode in="blur"/>
+          <feMergeNode in="SourceGraphic"/>
+        </feMerge>
+      </filter>
+    </defs>`;
+  const cx = cloud.left + cloud.width/2 - pipeRect.left;
+  const cy = cloud.bottom - pipeRect.top;
+
+  document.querySelectorAll('.node').forEach((node,i) => {
+    const box = node.querySelector('.node-box').getBoundingClientRect();
+    const x2 = box.left + box.width/2 - pipeRect.left;
+    const y2 = box.top - pipeRect.top;
+    const my = (cy+y2)/2;
+    const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+    path.setAttribute('d', `M ${cx} ${cy} C ${cx} ${my}, ${x2} ${my}, ${x2} ${y2}`);
+    path.setAttribute('class','path-line');
+    path.dataset.i = i;
+    svg.appendChild(path);
+
+    const halo = document.createElementNS('http://www.w3.org/2000/svg','circle');
+    halo.setAttribute('class','pulse-halo'); halo.dataset.i = i;
+    halo.setAttribute('r', 0); halo.setAttribute('opacity', 0);
+    halo.setAttribute('filter','url(#glow)');
+    svg.appendChild(halo);
+
+    const core = document.createElementNS('http://www.w3.org/2000/svg','circle');
+    core.setAttribute('class','pulse-core'); core.dataset.i = i;
+    core.setAttribute('r', 0); core.setAttribute('opacity', 0);
+    svg.appendChild(core);
+  });
+}
+window.addEventListener('resize', drawLinks);
+setTimeout(drawLinks, 60);
+
+// animate a glowing dot travelling along one path, in either direction
+function pulseAlong(i, direction, color, dur){
+  const path = document.querySelector(`.path-line[data-i="${i}"]`);
+  const halo = document.querySelector(`.pulse-halo[data-i="${i}"]`);
+  const core = document.querySelector(`.pulse-core[data-i="${i}"]`);
+  if(!path || !halo || !core) return;
+  const len = path.getTotalLength();
+  halo.setAttribute('fill', color);
+  core.setAttribute('fill', '#ffffff');
+  core.setAttribute('stroke', color);
+  core.setAttribute('stroke-width', 1.4);
+  const t0 = performance.now();
+  function step(now){
+    let t = Math.min(1, (now-t0)/dur);
+    let tt = direction === 'down' ? t : 1-t; // path runs cloud -> station
+    const pt = path.getPointAtLength(tt*len);
+    const edge = Math.min(t, 1-t);
+    const fade = edge < 0.08 ? edge/0.08 : 1;
+    halo.setAttribute('cx', pt.x); halo.setAttribute('cy', pt.y);
+    halo.setAttribute('r', 7); halo.setAttribute('opacity', 0.55*fade);
+    core.setAttribute('cx', pt.x); core.setAttribute('cy', pt.y);
+    core.setAttribute('r', 4); core.setAttribute('opacity', fade);
+    if(t<1) requestAnimationFrame(step);
+    else { halo.setAttribute('opacity',0); core.setAttribute('opacity',0); }
+  }
+  requestAnimationFrame(step);
+}
+
+const phaseTag = document.getElementById('phaseTag');
+
+// brief highlight flash on a station's local flow row, in sequence
+function flashLocalFlow(i, delayBase){
+  const ids = [`flow-local-${i}`, `flow-resid-${i}`, `flow-corr-${i}`];
+  ids.forEach((id, k)=>{
+    setTimeout(()=>{
+      const el = document.getElementById(id);
+      if(!el) return;
+      el.classList.add('hit');
+      setTimeout(()=>el.classList.remove('hit'), 480);
+    }, delayBase + k*160);
+  });
+}
+
+function animateRound(cb){
+  const dur = Math.max(550, 950/speed);
+  // phase 1: each station uploads its local update to the cloud (teal, upward)
+  phaseTag.textContent = 'uploading local updates →';
+  phaseTag.className = 'phase-tag up';
+  document.querySelectorAll('.node').forEach(n=>n.classList.add('pinged'));
+  for(let i=0;i<4;i++) pulseAlong(i,'up','#12615c',dur);
+
+  setTimeout(()=>{
+    document.querySelectorAll('.node').forEach(n=>n.classList.remove('pinged'));
+    // phase 2: cloud broadcasts the aggregated, relation-guided weights back down (amber)
+    phaseTag.textContent = '← broadcasting aggregated weights';
+    phaseTag.className = 'phase-tag down';
+    for(let i=0;i<4;i++) pulseAlong(i,'down','#c97a2e',dur);
+
+    setTimeout(()=>{
+      // phase 3: each station applies its local base + residual correction (teal → amber → green)
+      phaseTag.textContent = 'applying local residual correction';
+      phaseTag.className = 'phase-tag';
+      for(let i=0;i<4;i++) flashLocalFlow(i, 0);
+
+      setTimeout(()=>{
+        phaseTag.textContent = 'idle';
+        if(cb) cb();
+      }, 3*160+480);
+    }, dur+80);
+  }, dur+120);
+}
+
+// remember each station's base readings so the random walk stays anchored
+// to a realistic range instead of drifting off indefinitely
+stations.forEach(s => {
+  s.base = {
+    turbRaw:s.turbRaw, turbFinal:s.turbFinal, ph:s.ph, temp:s.temp,
+    tds:s.tds, resCl:s.resCl, alum:s.alum, cl:s.cl, alumErr:s.alumErr, clErr:s.clErr
+  };
+});
+
+function walk(current, base, spread, min, max){
+  // pull gently back toward the base value while still moving day to day
+  const pull = (base - current) * 0.12;
+  const jitter = (Math.random()-0.5) * spread;
+  return Math.min(max, Math.max(min, current + pull + jitter));
+}
+
+let sample = 1;
+let running = false;
+let speed = 1;
+let loopHandle = null;
+const btn = document.getElementById('runBtn');
+const speedBtn = document.getElementById('speedBtn');
+const downloadLogBtn = document.getElementById('downloadLogBtn');
+const horizonSelect = document.getElementById('horizonSelect');
+const speeds = [1,2,4];
+const forecastData = window.horizonForecasts || [];
+document.getElementById('sampleTotal').textContent = String(forecastData.length);
+const stationCapacityMld = [112.5,212,910,1365];
+let selectedHorizon = Number(horizonSelect.value);
+const horizonLabels = {
+  1:'H+1 · 1 day ahead',
+  2:'H+2 · 2 days ahead',
+  3:'H+3 · 3 days ahead'
+};
+
+function signedError(value){
+  const sign = value >= 0 ? '+' : '−';
+  return `${sign}${Math.abs(value).toFixed(2)} error`;
+}
+
+function percentError(forecast, actual){
+  if(actual === 0) return forecast === 0 ? 0 : Infinity;
+  return 100 * Math.abs(forecast - actual) / Math.abs(actual);
+}
+
+function fixedOrInfinity(value, digits=1){
+  return Number.isFinite(value) ? value.toFixed(digits) : 'Infinity';
+}
+
+function horizonEvaluation(day, horizon){
+  const rows = day?.[1]?.[horizon-1] || [];
+  const stationRows = rows.map((values,i)=>{
+    const [alumForecast, alumActual, chlorineForecast, chlorineActual] = values;
+    const flow = stationCapacityMld[i];
+    const alumErrorPct = percentError(alumForecast, alumActual);
+    const chlorineErrorPct = percentError(chlorineForecast, chlorineActual);
+    return {
+      station:stations[i].name,
+      flow,
+      alumForecast, alumActual,
+      alumForecastT:alumForecast * flow / 1000,
+      alumActualT:alumActual * flow / 1000,
+      alumErrorPct,
+      alumWithin:alumErrorPct <= 10,
+      chlorineForecast, chlorineActual,
+      chlorineForecastT:chlorineForecast * flow / 1000,
+      chlorineActualT:chlorineActual * flow / 1000,
+      chlorineErrorPct,
+      chlorineWithin:chlorineErrorPct <= 10
+    };
+  });
+  return {
+    rows:stationRows,
+    alumForecastT:stationRows.reduce((sum,row)=>sum+row.alumForecastT,0),
+    alumActualT:stationRows.reduce((sum,row)=>sum+row.alumActualT,0),
+    chlorineForecastT:stationRows.reduce((sum,row)=>sum+row.chlorineForecastT,0),
+    chlorineActualT:stationRows.reduce((sum,row)=>sum+row.chlorineActualT,0),
+    alumHits:stationRows.filter(row=>row.alumWithin).length,
+    chlorineHits:stationRows.filter(row=>row.chlorineWithin).length
+  };
+}
+
+function buildLogFile(){
+  const day = forecastData[(sample-1) % forecastData.length];
+  if(!day) return '';
+  const selected = horizonEvaluation(day, selectedHorizon);
+  const generatedAt = new Date().toISOString();
+  const lines = [
+    'RG-AdaFedResidual FORECAST EVALUATION LOG',
+    '==========================================',
+    `Generated: ${generatedAt}`,
+    `Dataset date: ${day[0]}`,
+    `Locked-test day: ${sample} of ${forecastData.length}`,
+    `Selected horizon: ${horizonLabels[selectedHorizon]}`,
+    'Requirement formula: dose (mg/L) x flow (MLD) / 1000 = requirement (t/day)',
+    'Acceptance rule: absolute percentage error <= 10%',
+    '',
+    'CURRENT STATION STATE',
+    '---------------------'
+  ];
+
+  stations.forEach((station,i)=>{
+    lines.push(
+      `[${station.name}]`,
+      `Flow basis: ${stationCapacityMld[i].toFixed(1)} MLD`,
+      `Raw turbidity: ${station.turbRaw.toFixed(2)} NTU`,
+      `Final turbidity: ${station.turbFinal.toFixed(2)} NTU`,
+      `pH: ${station.ph.toFixed(2)}`,
+      `Temperature: ${station.temp.toFixed(1)} C`,
+      `TDS: ${Math.round(station.tds)} mg/L`,
+      `Residual chlorine: ${station.resCl.toFixed(2)} mg/L`,
+      ''
+    );
+  });
+
+  lines.push(
+    'SELECTED HORIZON SUMMARY',
+    '------------------------',
+    `Stations evaluated: ${selected.rows.length}`,
+    `Alum requirement - Forecast: ${selected.alumForecastT.toFixed(3)} t/day | Actual: ${selected.alumActualT.toFixed(3)} t/day`,
+    `Chlorine requirement - Forecast: ${selected.chlorineForecastT.toFixed(3)} t/day | Actual: ${selected.chlorineActualT.toFixed(3)} t/day`,
+    `Alum within +/-10%: ${selected.alumHits}/${selected.rows.length} (${(selected.alumHits/selected.rows.length*100).toFixed(1)}%)`,
+    `Chlorine within +/-10%: ${selected.chlorineHits}/${selected.rows.length} (${(selected.chlorineHits/selected.rows.length*100).toFixed(1)}%)`,
+    '',
+    'SELECTED HORIZON - STATION DETAILS',
+    '----------------------------------'
+  );
+
+  selected.rows.forEach(row=>{
+    lines.push(
+      `[${row.station}]`,
+      `Flow basis: ${row.flow.toFixed(1)} MLD`,
+      `Alum: forecast ${row.alumForecast.toFixed(2)} mg/L | actual ${row.alumActual.toFixed(2)} mg/L | forecast ${row.alumForecastT.toFixed(3)} t/day | actual ${row.alumActualT.toFixed(3)} t/day | error ${fixedOrInfinity(row.alumErrorPct)}% | ${row.alumWithin?'Within +/-10%':'Outside +/-10%'}`,
+      `Chlorine: forecast ${row.chlorineForecast.toFixed(2)} mg/L | actual ${row.chlorineActual.toFixed(2)} mg/L | forecast ${row.chlorineForecastT.toFixed(3)} t/day | actual ${row.chlorineActualT.toFixed(3)} t/day | error ${fixedOrInfinity(row.chlorineErrorPct)}% | ${row.chlorineWithin?'Within +/-10%':'Outside +/-10%'}`,
+      ''
+    );
+  });
+
+  lines.push('ALL FORECAST HORIZONS - SUMMARY','--------------------------------');
+  [1,2,3].forEach(horizon=>{
+    const evaluation = horizonEvaluation(day,horizon);
+    lines.push(
+      `${horizonLabels[horizon]}${horizon===selectedHorizon?' [SELECTED]':''}`,
+      `  Alum: forecast ${evaluation.alumForecastT.toFixed(3)} t/day | actual ${evaluation.alumActualT.toFixed(3)} t/day | within +/-10% ${evaluation.alumHits}/${evaluation.rows.length}`,
+      `  Chlorine: forecast ${evaluation.chlorineForecastT.toFixed(3)} t/day | actual ${evaluation.chlorineActualT.toFixed(3)} t/day | within +/-10% ${evaluation.chlorineHits}/${evaluation.rows.length}`
+    );
+  });
+
+  lines.push('','END OF LOG');
+  return lines.join('\r\n');
+}
+
+function downloadLogFile(){
+  const content = buildLogFile();
+  if(!content) return;
+  const day = forecastData[(sample-1) % forecastData.length];
+  const fileName = `RG-AdaFedResidual_${day[0]}_H${selectedHorizon}_sample-${String(sample).padStart(3,'0')}.log`;
+  const blob = new Blob([content],{type:'text/plain;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),0);
+  const original = downloadLogBtn.textContent;
+  downloadLogBtn.textContent = 'LOG downloaded';
+  setTimeout(()=>downloadLogBtn.textContent = original,1200);
+}
+
+// The selected horizon uses the stored RG-AdaFedResidual test predictions.
+// Each daily evaluation contains four forecasts: one for each station.
+function renderForecastState(animate=false){
+  const day = forecastData[(sample-1) % forecastData.length];
+  const rows = day?.[1]?.[selectedHorizon-1] || [];
+  if(rows.length !== stations.length) return;
+
+  let alumHits = 0;
+  let chlorineHits = 0;
+  let alumForecastKgDay = 0;
+  let alumActualKgDay = 0;
+  let chlorineForecastKgDay = 0;
+  let chlorineActualKgDay = 0;
+  const alumDetailRows = [];
+  const chlorineDetailRows = [];
+
+  rows.forEach((values,i)=>{
+    const [alumForecast, alumActual, chlorineForecast, chlorineActual] = values;
+    const alumError = alumForecast - alumActual;
+    const chlorineError = chlorineForecast - chlorineActual;
+    const capacity = stationCapacityMld[i];
+    const alumForecastT = alumForecast * capacity / 1000;
+    const alumActualT = alumActual * capacity / 1000;
+    const chlorineForecastT = chlorineForecast * capacity / 1000;
+    const chlorineActualT = chlorineActual * capacity / 1000;
+    const alumErrorPct = 100 * Math.abs(alumError) / Math.abs(alumActual);
+    const chlorineErrorPct = 100 * Math.abs(chlorineError) / Math.abs(chlorineActual);
+    const alumWithin = alumErrorPct <= 10;
+    const chlorineWithin = chlorineErrorPct <= 10;
+    alumForecastKgDay += alumForecast * capacity;
+    alumActualKgDay += alumActual * capacity;
+    chlorineForecastKgDay += chlorineForecast * capacity;
+    chlorineActualKgDay += chlorineActual * capacity;
+    if(alumWithin) alumHits++;
+    if(chlorineWithin) chlorineHits++;
+
+    alumDetailRows.push(`
+      <tr>
+        <td>${stations[i].name}</td><td class="num">${capacity.toFixed(1)}</td>
+        <td class="num">${alumForecast.toFixed(2)}</td><td class="num">${alumActual.toFixed(2)}</td>
+        <td class="num">${alumForecastT.toFixed(3)}</td><td class="num">${alumActualT.toFixed(3)}</td>
+        <td class="num">${alumErrorPct.toFixed(1)}%</td>
+        <td><span class="status-pill ${alumWithin?'within':'outside'}">${alumWithin?'Within ±10%':'Outside ±10%'}</span></td>
+      </tr>`);
+    chlorineDetailRows.push(`
+      <tr>
+        <td>${stations[i].name}</td><td class="num">${capacity.toFixed(1)}</td>
+        <td class="num">${chlorineForecast.toFixed(2)}</td><td class="num">${chlorineActual.toFixed(2)}</td>
+        <td class="num">${chlorineForecastT.toFixed(3)}</td><td class="num">${chlorineActualT.toFixed(3)}</td>
+        <td class="num">${chlorineErrorPct.toFixed(1)}%</td>
+        <td><span class="status-pill ${chlorineWithin?'within':'outside'}">${chlorineWithin?'Within ±10%':'Outside ±10%'}</span></td>
+      </tr>`);
+
+    stations[i].alum = alumForecast;
+    stations[i].cl = chlorineForecast;
+    stations[i].alumErr = alumError;
+    stations[i].clErr = chlorineError;
+
+    const alumEl = document.getElementById(`alum-${i}`);
+    const clEl = document.getElementById(`cl-${i}`);
+    alumEl.innerHTML = `${alumForecast.toFixed(2)} <span>mg/L</span>`;
+    clEl.innerHTML = `${chlorineForecast.toFixed(2)} <span>mg/L</span>`;
+    document.getElementById(`alumErr-${i}`).textContent = signedError(alumError);
+    document.getElementById(`clErr-${i}`).textContent = signedError(chlorineError);
+    document.getElementById(`forecast-horizon-${i}`).textContent = horizonLabels[selectedHorizon];
+    if(animate){
+      alumEl.classList.add('tick');
+      clEl.classList.add('tick');
+      setTimeout(()=>{alumEl.classList.remove('tick');clEl.classList.remove('tick');},500);
+    }
+  });
+
+  document.getElementById('summarySub').textContent =
+    `Dataset date ${day[0]} · ${horizonLabels[selectedHorizon]} · capacity-based daily requirements`;
+  document.getElementById('sumCount').textContent = String(rows.length);
+  document.getElementById('sumAlumForecast').textContent = (alumForecastKgDay/1000).toFixed(3);
+  document.getElementById('sumAlumActual').textContent = (alumActualKgDay/1000).toFixed(3);
+  document.getElementById('sumClForecast').textContent = (chlorineForecastKgDay/1000).toFixed(3);
+  document.getElementById('sumClActual').textContent = (chlorineActualKgDay/1000).toFixed(3);
+  document.getElementById('sumAlumHit').textContent = (alumHits/rows.length*100).toFixed(1)+'%';
+  document.getElementById('sumClHit').textContent = (chlorineHits/rows.length*100).toFixed(1)+'%';
+  document.getElementById('breakdownNote').textContent =
+    `Dataset date ${day[0]} · ${horizonLabels[selectedHorizon]} · fixed flow basis shown for each station`;
+  document.getElementById('alumBreakdownBody').innerHTML = alumDetailRows.join('');
+  document.getElementById('chlorineBreakdownBody').innerHTML = chlorineDetailRows.join('');
+}
+renderForecastState();
+
+function tick(){
+  if(!forecastData.length) return;
+  sample = sample >= forecastData.length ? 1 : sample+1;
+  document.getElementById('sampleNum').textContent = sample;
+
+  animateRound(()=>{
+    stations.forEach((s,i)=>{
+      const b = s.base;
+      s.turbRaw  = walk(s.turbRaw,  b.turbRaw,  4,   Math.max(2,b.turbRaw*0.4),  b.turbRaw*1.6);
+      s.turbFinal= walk(s.turbFinal,b.turbFinal,0.25,0.1,                       b.turbFinal*2);
+      s.ph       = walk(s.ph,       b.ph,       0.08,6.8,                       8.6);
+      s.temp     = walk(s.temp,     b.temp,     0.6, b.temp-4,                  b.temp+4);
+      s.tds      = walk(s.tds,      b.tds,      12,  b.tds*0.75,                b.tds*1.25);
+      s.resCl    = walk(s.resCl,    b.resCl,    0.15,0.1,                       b.resCl*1.8);
+
+      const st = document.getElementById(`station-${i}`);
+      st.querySelector('.metrics').children[0].querySelector('.v').textContent = s.turbRaw.toFixed(2)+' NTU';
+      st.querySelector('.metrics').children[1].querySelector('.v').textContent = s.turbFinal.toFixed(2)+' NTU';
+      st.querySelector('.metrics').children[2].querySelector('.v').textContent = s.ph.toFixed(2);
+      st.querySelector('.metrics').children[3].querySelector('.v').textContent = s.temp.toFixed(1)+' °C';
+      st.querySelector('.metrics').children[4].querySelector('.v').textContent = Math.round(s.tds)+' mg/L';
+      st.querySelector('.metrics').children[5].querySelector('.v').textContent = s.resCl.toFixed(2)+' mg/L';
+
+      st.classList.add('updating');
+      setTimeout(()=>st.classList.remove('updating'), 400);
+    });
+    renderForecastState(true);
+    if(running){
+      loopHandle = setTimeout(tick, 260/speed);
+    }
+  });
+}
+
+btn.addEventListener('click', ()=>{
+  running = !running;
+  if(running){
+    btn.textContent = 'Pause';
+    tick(); // tick() self-chains the next call via setTimeout while running
+  } else {
+    btn.textContent = 'Start';
+    clearTimeout(loopHandle);
+  }
+});
+
+speedBtn.addEventListener('click', ()=>{
+  const idx = speeds.indexOf(speed);
+  speed = speeds[(idx+1) % speeds.length];
+  speedBtn.textContent = `Speed: ${speed}×`;
+});
+
+horizonSelect.addEventListener('change', ()=>{
+  selectedHorizon = Number(horizonSelect.value);
+  renderForecastState(true);
+});
+
+downloadLogBtn.addEventListener('click', downloadLogFile);
+</script>
+</body>
+</html>
